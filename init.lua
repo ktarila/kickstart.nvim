@@ -91,7 +91,7 @@ vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = false
+vim.g.have_nerd_font = true
 
 -- [[ Setting options ]]
 -- See `:help vim.opt`
@@ -102,7 +102,7 @@ vim.g.have_nerd_font = false
 vim.opt.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.opt.relativenumber = true
+vim.opt.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.mouse = 'a'
@@ -415,6 +415,7 @@ require('lazy').setup({
       { 'williamboman/mason.nvim', config = true }, -- NOTE: Must be loaded before dependants
       'williamboman/mason-lspconfig.nvim',
       'WhoIsSethDaniel/mason-tool-installer.nvim',
+      'jose-elias-alvarez/null-ls.nvim',
 
       -- Useful status updates for LSP.
       -- NOTE: `opts = {}` is the same as calling `require('fidget').setup({})`
@@ -552,9 +553,53 @@ require('lazy').setup({
       --  By default, Neovim doesn't support everything that is in the LSP specification.
       --  When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
       --  So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
+
+      local null_ls = require 'null-ls'
+      -- Path to local PHP CS Fixer configuration file
+      local fixer_config_path = vim.fn.getcwd() .. '/.php-cs-fixer.php'
+
+      null_ls.setup {
+        sources = {
+          -- PHP-CS-Fixer formatter
+          -- null_ls.builtins.formatting.phpcsfixer.with {
+          --   command = 'php-cs-fixer',
+          --   args = { 'fix', '--config=' .. vim.fn.getcwd() .. '/.php-cs-fixer.php', '--quiet' },
+          --   to_temp_file = true,
+          -- },
+
+          -- PHP_CodeSniffer for diagnostics
+          null_ls.builtins.diagnostics.phpcs.with {
+            command = 'phpcs',
+            args = { '--standard=phpcs.xml.dist', '--report=json', '--report-file=/dev/stdout', '--stdin-path=$FILENAME', '-' },
+            method = null_ls.methods.DIAGNOSTICS,
+            to_stdin = true,
+            format = 'json',
+            on_output = function(params)
+              local diagnostics = {}
+              if params.output then
+                local decoded = vim.fn.json_decode(params.output)
+                if decoded and decoded.files then
+                  for filename, file in pairs(decoded.files) do
+                    for _, message in ipairs(file.messages) do
+                      table.insert(diagnostics, {
+                        row = message.line,
+                        col = message.column,
+                        source = 'phpcs',
+                        message = message.message,
+                        severity = vim.diagnostic.severity[message.type:upper()],
+                      })
+                    end
+                  end
+                end
+              end
+              return diagnostics
+            end,
+          },
+        },
+      }
+
       local capabilities = vim.lsp.protocol.make_client_capabilities()
       capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
-
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
       --
@@ -592,6 +637,59 @@ require('lazy').setup({
             },
           },
         },
+        cssls = {},
+        tailwindcss = {
+          root_dir = function(...)
+            return require('lspconfig.util').root_pattern '.git'(...)
+          end,
+        },
+        tsserver = {
+          root_dir = function(...)
+            return require('lspconfig.util').root_pattern '.git'(...)
+          end,
+          single_file_support = false,
+          settings = {
+            typescript = {
+              inlayHints = {
+                includeInlayParameterNameHints = 'literal',
+                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+                includeInlayFunctionParameterTypeHints = true,
+                includeInlayVariableTypeHints = false,
+                includeInlayPropertyDeclarationTypeHints = true,
+                includeInlayFunctionLikeReturnTypeHints = true,
+                includeInlayEnumMemberValueHints = true,
+              },
+            },
+            javascript = {
+              inlayHints = {
+                includeInlayParameterNameHints = 'all',
+                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+                includeInlayFunctionParameterTypeHints = true,
+                includeInlayVariableTypeHints = true,
+                includeInlayPropertyDeclarationTypeHints = true,
+                includeInlayFunctionLikeReturnTypeHints = true,
+                includeInlayEnumMemberValueHints = true,
+              },
+            },
+          },
+        },
+        html = {},
+        yamlls = {
+          settings = {
+            yaml = {
+              keyOrdering = false,
+            },
+          },
+        },
+
+        intelephense = {},
+        eslint = {},
+        twiggy_language_server = {
+          root_dir = function(...)
+            return require('lspconfig.util').root_pattern '.git'(...)
+          end,
+          filetypes = { 'twig' },
+        },
       }
 
       -- Ensure the servers and tools above are installed
@@ -606,7 +704,13 @@ require('lazy').setup({
       -- for you, so that they are available from within Neovim.
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
-        'stylua', -- Used to format Lua code
+        'stylua',
+        'selene',
+        'shellcheck',
+        'shfmt',
+        'tailwindcss-language-server',
+        'typescript-language-server',
+        'css-lsp',
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -640,6 +744,14 @@ require('lazy').setup({
     },
     opts = {
       notify_on_error = false,
+      formatters = {
+        prettier_twig = {
+          command = 'prettier',
+          args = { '--stdin-filepath', '$FILENAME', '--parser', 'html' },
+          tempfile_postfix = '.tmp',
+        },
+        -- Add other formatters as needed
+      },
       format_on_save = function(bufnr)
         -- Disable "format_on_save lsp_fallback" for languages that don't
         -- have a well standardized coding style. You can add additional
@@ -652,6 +764,7 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
+        twig = { 'prettier_twig' },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
@@ -835,7 +948,7 @@ require('lazy').setup({
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'vim', 'vimdoc' },
+      ensure_installed = { 'php', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'vim', 'vimdoc', 'twig' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
@@ -878,7 +991,22 @@ require('lazy').setup({
   -- require 'kickstart.plugins.lint',
   -- require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree',
-  -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
+  require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
+  {
+    'akinsho/bufferline.nvim',
+
+    keys = {
+      { '<Tab>', '<Cmd>BufferLineCycleNext<CR>', desc = 'Next tab' },
+      { '<S-Tab>', '<Cmd>BufferLineCyclePrev<CR>', desc = 'Prev tab' },
+    },
+    opts = {
+      options = {
+        mode = 'tabs',
+        show_buffer_close_icons = false,
+        show_close_icon = false,
+      },
+    },
+  },
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
@@ -907,6 +1035,61 @@ require('lazy').setup({
     },
   },
 })
+
+-- Function to call php-cs-fixer
+function PhpCsFixerFixFile()
+  -- Get the current file path
+  local file = vim.fn.expand '%:p'
+
+  -- Define the php-cs-fixer command
+  local cmd = 'php-cs-fixer fix ' .. vim.fn.shellescape(file)
+
+  -- Run the command
+  vim.fn.system(cmd)
+
+  -- Check if the file was changed
+  if vim.v.shell_error == 0 then
+    -- Reload the buffer to reflect changes
+    vim.cmd 'edit'
+  else
+    -- Notify the user if there's an error
+    vim.notify('php-cs-fixer error: ' .. vim.fn.system(cmd), vim.log.levels.ERROR)
+  end
+end
+
+-- Autocommand to format PHP files on save
+vim.api.nvim_create_autocmd('BufWritePost', {
+  pattern = '*.php',
+  callback = function()
+    PhpCsFixerFixFile()
+  end,
+})
+
+-- Define options for key mappings
+local opts = { noremap = true, silent = true }
+
+-- New tab
+vim.api.nvim_set_keymap('n', 'te', ':tabedit<CR>', opts)
+vim.api.nvim_set_keymap('n', '<tab>', ':tabnext<CR>', opts)
+vim.api.nvim_set_keymap('n', '<s-tab>', ':tabprev<CR>', opts)
+
+-- Split window
+vim.api.nvim_set_keymap('n', 'ss', ':split<CR>', opts)
+vim.api.nvim_set_keymap('n', 'sv', ':vsplit<CR>', opts)
+
+-- Move window
+vim.api.nvim_set_keymap('n', 'sh', '<C-w>h', opts)
+vim.api.nvim_set_keymap('n', 'sk', '<C-w>k', opts)
+vim.api.nvim_set_keymap('n', 'sj', '<C-w>j', opts)
+vim.api.nvim_set_keymap('n', 'sl', '<C-w>l', opts)
+
+-- Select all
+vim.api.nvim_set_keymap('n', '<C-a>', 'ggVG', opts)
+-- Resize window using Ctrl-w followed by arrow keys
+vim.api.nvim_set_keymap('n', '<C-w><Up>', ':resize -2<CR>', opts)
+vim.api.nvim_set_keymap('n', '<C-w><Down>', ':resize +2<CR>', opts)
+vim.api.nvim_set_keymap('n', '<C-w><Left>', ':vertical resize -2<CR>', opts)
+vim.api.nvim_set_keymap('n', '<C-w><Right>', ':vertical resize +2<CR>', opts)
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
