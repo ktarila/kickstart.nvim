@@ -1023,7 +1023,7 @@ require('lazy').setup({
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
   --    For additional information, see `:help lazy.nvim-lazy.nvim-structuring-your-plugins`
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
 }, {
   ui = {
     -- If you are using a Nerd Font: set icons to an empty table which will use the
@@ -1100,9 +1100,6 @@ vim.api.nvim_set_keymap('n', '<C-w><Up>', ':resize -2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Down>', ':resize +2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Left>', ':vertical resize -2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Right>', ':vertical resize +2<CR>', opts)
-
--- Open terminal under current window
-vim.api.nvim_set_keymap('n', '<leader><C-t>', ':belowright split | terminal <CR>i', opts)
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
