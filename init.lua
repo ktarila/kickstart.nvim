@@ -567,6 +567,16 @@ require('lazy').setup({
           --   to_temp_file = true,
           -- },
 
+          -- TwigCS for diagnostics
+          null_ls.builtins.diagnostics.twigcs,
+
+          null_ls.builtins.formatting.prettier.with {
+            command = 'prettier',
+            args = { '--stdin-filepath', '$FILENAME', '--parser', 'html' },
+            to_stdin = true,
+            filetypes = { 'twig' },
+          },
+
           -- PHP_CodeSniffer for diagnostics
           null_ls.builtins.diagnostics.phpcs.with {
             command = 'phpcs',
@@ -579,7 +589,7 @@ require('lazy').setup({
               if params.output then
                 local decoded = vim.fn.json_decode(params.output)
                 if decoded and decoded.files then
-                  for filename, file in pairs(decoded.files) do
+                  for _, file in pairs(decoded.files) do
                     for _, message in ipairs(file.messages) do
                       table.insert(diagnostics, {
                         row = message.line,
@@ -891,13 +901,13 @@ require('lazy').setup({
     -- change the command in the config to whatever the name of that colorscheme is.
     --
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
+    'catppuccin/nvim',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     init = function()
       -- Load the colorscheme here.
       -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+      -- any other, such as catppuccin-latte, catppuccin-frappe, catppuccin-macchiato, or catppuccin-mocha.
+      vim.cmd.colorscheme 'catppuccin-mocha'
 
       -- You can configure highlights by doing something like:
       vim.cmd.hi 'Comment gui=none'
@@ -986,9 +996,9 @@ require('lazy').setup({
   --  Here are some example plugins that I've included in the Kickstart repository.
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
-  -- require 'kickstart.plugins.debug',
+  require 'kickstart.plugins.debug',
   -- require 'kickstart.plugins.indent_line',
-  -- require 'kickstart.plugins.lint',
+  require 'kickstart.plugins.lint',
   require 'kickstart.plugins.neo-tree',
   require 'kickstart.plugins.autopairs',
   require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
@@ -1090,6 +1100,9 @@ vim.api.nvim_set_keymap('n', '<C-w><Up>', ':resize -2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Down>', ':resize +2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Left>', ':vertical resize -2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Right>', ':vertical resize +2<CR>', opts)
+
+-- Open terminal under current window
+vim.api.nvim_set_keymap('n', '<leader><C-t>', ':belowright split | terminal <CR>i', opts)
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
