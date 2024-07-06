@@ -29,6 +29,7 @@ return {
     require('toggleterm').setup(opts)
   end,
   keys = {
-    { '<Leader>T', '<Cmd>ToggleTerm direction=float<CR>', noremap = true, silent = true, desc = 'Open ToggleTerm floating window' },
+    { '<Leader>Tt', '<Cmd>ToggleTerm direction=float<CR>', noremap = true, silent = true, desc = 'Open ToggleTerm floating window' },
+    { '<Leader>Tg', '<Cmd>ToggleTerm direction=float<CR>lazygit<CR>', noremap = true, silent = true, desc = 'Open LazyGit floating window' },
   },
 }
