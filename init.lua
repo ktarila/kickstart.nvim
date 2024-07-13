@@ -1087,12 +1087,6 @@ vim.api.nvim_set_keymap('n', '<s-tab>', ':tabprev<CR>', opts)
 vim.api.nvim_set_keymap('n', 'ss', ':split<CR>', opts)
 vim.api.nvim_set_keymap('n', 'sv', ':vsplit<CR>', opts)
 
--- Move window
-vim.api.nvim_set_keymap('n', 'sh', '<C-w>h', opts)
-vim.api.nvim_set_keymap('n', 'sk', '<C-w>k', opts)
-vim.api.nvim_set_keymap('n', 'sj', '<C-w>j', opts)
-vim.api.nvim_set_keymap('n', 'sl', '<C-w>l', opts)
-
 -- Select all
 vim.api.nvim_set_keymap('n', '<C-a>', 'ggVG', opts)
 -- Resize window using Ctrl-w followed by arrow keys
@@ -1101,14 +1095,7 @@ vim.api.nvim_set_keymap('n', '<C-w><Down>', ':resize +2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Left>', ':vertical resize -2<CR>', opts)
 vim.api.nvim_set_keymap('n', '<C-w><Right>', ':vertical resize +2<CR>', opts)
 
-vim.g.neoterm_size = tostring(0.3 * vim.o.columns)
-vim.g.neoterm_default_mod = 'botright vertical'
-
-vim.api.nvim_set_keymap('n', '<leader>.e', ':TaskThenExit ', {})
-vim.api.nvim_set_keymap('n', '<leader>.p', ':TaskPersist ', {})
-vim.api.nvim_set_keymap('n', '<leader>.t', ':1Ttoggle<CR><ESC>', {})
-vim.api.nvim_set_keymap('n', '<leader>..', ':TaskPersist<CR>', {})
-vim.api.nvim_set_keymap('n', '<leader>.s', ':SetTaskCommand<CR>', {})
+vim.api.nvim_set_keymap('n', '<leader>..', ':TaskPersist<CR>', { desc = 'Run a single terminal command in floating terminal window' })
 
 local Input = require 'nui.input'
 local event = require('nui.utils.autocmd').event
@@ -1117,14 +1104,17 @@ local stored_task_command = nil
 
 local trigger_set_command_input = function(callback_fn)
   local input_component = Input({
-    position = '50%',
+    position = {
+      row = '50%',
+      col = '50%',
+    },
     size = {
       width = 50,
     },
     border = {
       style = 'single',
       text = {
-        top = 'Commmand to run:',
+        top = 'Command to run:',
         top_align = 'center',
       },
     },
@@ -1152,27 +1142,22 @@ vim.api.nvim_create_user_command('SetTaskCommand', function()
   end)
 end, {})
 
-vim.api.nvim_create_user_command('TaskThenExit', function(input)
-  local cmd = input.args
-  vim.api.nvim_command ':Tnew'
-  vim.api.nvim_command(':T ' .. cmd .. ' && exit')
-end, { bang = true, nargs = '*' })
+local Terminal = require('toggleterm.terminal').Terminal
 
-vim.api.nvim_create_user_command('TaskPersist', function(input)
+vim.api.nvim_create_user_command('TaskPersist', function()
   local execute = function(cmd)
-    vim.api.nvim_command ':1Tclear'
-    vim.api.nvim_command(':1T ' .. cmd .. ' && exit')
+    local term = Terminal:new {
+      cmd = cmd,
+      hidden = true,
+      direction = 'float',
+      close_on_exit = false,
+    }
+    term:toggle()
   end
 
-  local one_off_command = input.args
-
-  if one_off_command and string.len(one_off_command) > 0 then
-    execute(one_off_command)
-  else
-    trigger_set_command_input(function()
-      execute(stored_task_command)
-    end)
-  end
+  trigger_set_command_input(function()
+    execute(stored_task_command)
+  end)
 end, { nargs = '*' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
