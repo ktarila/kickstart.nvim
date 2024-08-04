@@ -1159,5 +1159,17 @@ vim.api.nvim_create_user_command('TaskPersist', function()
   end)
 end, { nargs = '*' })
 
+-- Search for file with selected text as filename
+function FindFilesWithVisualText()
+  local saved_reg = vim.fn.getreg '"'
+  vim.cmd 'normal! gv"ay'
+  local text = vim.fn.getreg 'a'
+  vim.fn.setreg('"', saved_reg)
+  require('telescope.builtin').find_files { default_text = text }
+end
+
+-- Map the function to a key binding in visual mode using Shift + f
+vim.api.nvim_set_keymap('v', '<S-f>', ':lua FindFilesWithVisualText()<CR>', { noremap = true, silent = true })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
