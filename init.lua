@@ -661,7 +661,6 @@ require('lazy').setup({
       --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
       local servers = {
         -- clangd = {},
-        -- gopls = {},
         -- pyright = {},
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
@@ -670,8 +669,17 @@ require('lazy').setup({
         --    https://github.com/pmizio/typescript-tools.nvim
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
+        ts_ls = {},
         --
+        ruby_lsp = {
+          mason = false,
+          cmd = { vim.fn.expand '~/.asdf/shims/ruby-lsp' },
+        },
+        terraformls = {
+          root_dir = function(fname)
+            return require('lspconfig.util').root_pattern('.terraform', '.git', '*.tf')(fname)
+          end,
+        },
 
         lua_ls = {
           -- cmd = {...},
@@ -687,41 +695,12 @@ require('lazy').setup({
             },
           },
         },
+        gopls = {},
         cssls = {},
         tailwindcss = {
           root_dir = function(...)
             return require('lspconfig.util').root_pattern '.git'(...)
           end,
-        },
-        tsserver = {
-          root_dir = function(...)
-            return require('lspconfig.util').root_pattern '.git'(...)
-          end,
-          single_file_support = false,
-          settings = {
-            typescript = {
-              inlayHints = {
-                includeInlayParameterNameHints = 'literal',
-                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
-                includeInlayFunctionParameterTypeHints = true,
-                includeInlayVariableTypeHints = false,
-                includeInlayPropertyDeclarationTypeHints = true,
-                includeInlayFunctionLikeReturnTypeHints = true,
-                includeInlayEnumMemberValueHints = true,
-              },
-            },
-            javascript = {
-              inlayHints = {
-                includeInlayParameterNameHints = 'all',
-                includeInlayParameterNameHintsWhenArgumentMatchesName = false,
-                includeInlayFunctionParameterTypeHints = true,
-                includeInlayVariableTypeHints = true,
-                includeInlayPropertyDeclarationTypeHints = true,
-                includeInlayFunctionLikeReturnTypeHints = true,
-                includeInlayEnumMemberValueHints = true,
-              },
-            },
-          },
         },
         html = {},
         yamlls = {
@@ -732,7 +711,12 @@ require('lazy').setup({
           },
         },
 
-        phpactor = {},
+        phpactor = {
+          -- handlers = {
+          -- Override the default handler for "textDocument/publishDiagnostics" to disable diagnostics
+          -- ['textDocument/publishDiagnostics'] = function() end,
+          -- },
+        },
         eslint = {},
         twiggy_language_server = {
           root_dir = function(...)
@@ -1012,7 +996,7 @@ require('lazy').setup({
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'php', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'vim', 'vimdoc', 'twig' },
+      ensure_installed = { 'hcl', 'terraform', 'php', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'vim', 'vimdoc', 'twig' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
