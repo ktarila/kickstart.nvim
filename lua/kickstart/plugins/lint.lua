@@ -10,13 +10,19 @@ return {
         php = { 'phpcs' },
       }
 
+      local function safe_notify(msg, level)
+        vim.schedule(function()
+          vim.notify(msg, level or vim.log.levels.INFO)
+        end)
+      end
+
       -- Define a function to find the phpcs.xml in the working directory
       local function find_phpcs_config()
         local working_dir = vim.fn.getcwd()
         local phpcs_file = vim.fn.findfile('phpcs.xml', working_dir .. ';')
 
         if phpcs_file == '' then
-          -- vim.notify('phpcs.xml not found in working directory: ' .. working_dir .. '. Using PSR12 coding standard.', vim.log.levels.WARN)
+          -- safe_notify('phpcs.xml not found in working directory: ' .. working_dir .. '. Using PSR12 coding standard.', vim.log.levels.WARN)
           return nil -- Return nil if not found
         else
           -- vim.notify('Using phpcs.xml located at: ' .. phpcs_file .. ' (working directory: ' .. working_dir .. ')', vim.log.levels.INFO)

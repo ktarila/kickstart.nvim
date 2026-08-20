@@ -93,6 +93,13 @@ vim.g.maplocalleader = ' '
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
 
+-- Disable the optional remote-plugin providers we don't use. Nothing in this
+-- config needs them, and leaving them on only produces `:checkhealth` warnings.
+vim.g.loaded_node_provider = 0
+vim.g.loaded_perl_provider = 0
+vim.g.loaded_python3_provider = 0
+vim.g.loaded_ruby_provider = 0
+
 -- [[ Setting options ]]
 -- See `:help vim.opt`
 -- NOTE: You can change these options as you wish!
@@ -456,10 +463,11 @@ require('lazy').setup({
     'neovim/nvim-lspconfig',
     dependencies = {
       -- Automatically install LSPs and related tools to stdpath for Neovim
-      { 'williamboman/mason.nvim', config = true }, -- NOTE: Must be loaded before dependants
-      'williamboman/mason-lspconfig.nvim',
+      -- NOTE: mason.nvim must be loaded before dependants. The `williamboman/*`
+      -- repos are archived; v2 lives under the `mason-org` org.
+      { 'mason-org/mason.nvim', version = '^2.0.0', config = true },
+      { 'mason-org/mason-lspconfig.nvim', version = '^2.0.0' },
       'WhoIsSethDaniel/mason-tool-installer.nvim',
-      'jose-elias-alvarez/null-ls.nvim',
 
       -- Useful status updates for LSP.
       -- NOTE: `opts = {}` is the same as calling `require('fidget').setup({})`
@@ -554,7 +562,7 @@ require('lazy').setup({
           --
           -- When you move your cursor, the highlights will be cleared (the second autocommand).
           local client = vim.lsp.get_client_by_id(event.data.client_id)
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_documentHighlight) then
             local highlight_augroup = vim.api.nvim_create_augroup('kickstart-lsp-highlight', { clear = false })
             vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
               buffer = event.buf,
@@ -581,7 +589,7 @@ require('lazy').setup({
           -- code, if the language server you are using supports them
           --
           -- This may be unwanted, since they displace some of your code
-          if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
+          if client and client:supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
             end, '[T]oggle Inlay [H]ints')
@@ -589,67 +597,15 @@ require('lazy').setup({
         end,
       })
 
-      -- LSP servers and clients are able to communicate to each other what features they support.
-      --  By default, Neovim doesn't support everything that is in the LSP specification.
-      --  When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
-      --  So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
-
-      local null_ls = require 'null-ls'
-      -- Path to local PHP CS Fixer configuration file
-      local fixer_config_path = vim.fn.getcwd() .. '/.php-cs-fixer.php'
-
-      null_ls.setup {
-        sources = {
-          -- PHP-CS-Fixer formatter
-          -- null_ls.builtins.formatting.phpcsfixer.with {
-          --   command = 'php-cs-fixer',
-          --   args = { 'fix', '--config=' .. vim.fn.getcwd() .. '/.php-cs-fixer.php', '--quiet' },
-          --   to_temp_file = true,
-          -- },
-
-          -- TwigCS for diagnostics
-          null_ls.builtins.diagnostics.twigcs,
-
-          null_ls.builtins.formatting.prettier.with {
-            command = 'prettier',
-            args = { '--stdin-filepath', '$FILENAME' },
-            to_stdin = true,
-            filetypes = { 'twig', 'json' },
-          },
-
-          -- PHP_CodeSniffer for diagnostics
-          null_ls.builtins.diagnostics.phpcs.with {
-            command = 'phpcs',
-            args = { '--standard=phpcs.xml.dist', '--report=json', '--report-file=/dev/stdout', '--stdin-path=$FILENAME', '-' },
-            method = null_ls.methods.DIAGNOSTICS,
-            to_stdin = true,
-            format = 'json',
-            on_output = function(params)
-              local diagnostics = {}
-              if params.output then
-                local decoded = vim.fn.json_decode(params.output)
-                if decoded and decoded.files then
-                  for _, file in pairs(decoded.files) do
-                    for _, message in ipairs(file.messages) do
-                      table.insert(diagnostics, {
-                        row = message.line,
-                        col = message.column,
-                        source = 'phpcs',
-                        message = message.message,
-                        severity = vim.diagnostic.severity[message.type:upper()],
-                      })
-                    end
-                  end
-                end
-              end
-              return diagnostics
-            end,
-          },
-        },
-      }
-
+      -- Extra capabilities from nvim-cmp, applied to every server via the `*`
+      -- wildcard config (`:help lsp-config`).
       local capabilities = vim.lsp.protocol.make_client_capabilities()
       capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+      vim.lsp.config('*', { capabilities = capabilities })
+      -- Grab eslint's stock `on_attach` before we override it below, so the
+      -- LspEslintFixAll command it defines still gets created.
+      local eslint_on_attach = vim.lsp.config.eslint.on_attach
+
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
       --
@@ -676,9 +632,7 @@ require('lazy').setup({
           cmd = { vim.fn.expand '~/.asdf/shims/ruby-lsp' },
         },
         terraformls = {
-          root_dir = function(fname)
-            return require('lspconfig.util').root_pattern('.terraform', '.git', '*.tf')(fname)
-          end,
+          root_markers = { '.terraform', '.git' },
         },
 
         lua_ls = {
@@ -698,9 +652,7 @@ require('lazy').setup({
         gopls = {},
         cssls = {},
         tailwindcss = {
-          root_dir = function(...)
-            return require('lspconfig.util').root_pattern '.git'(...)
-          end,
+          root_markers = { '.git' },
         },
         html = {},
         yamlls = {
@@ -717,11 +669,21 @@ require('lazy').setup({
           -- ['textDocument/publishDiagnostics'] = function() end,
           -- },
         },
-        eslint = {},
-        twiggy_language_server = {
-          root_dir = function(...)
-            return require('lspconfig.util').root_pattern '.git'(...)
+        eslint = {
+          -- Apply ESLint's auto-fixes on save (JS/TS linting), on top of the
+          -- diagnostics the server publishes while editing.
+          on_attach = function(client, bufnr)
+            if eslint_on_attach then
+              eslint_on_attach(client, bufnr)
+            end
+            vim.api.nvim_create_autocmd('BufWritePre', {
+              buffer = bufnr,
+              command = 'LspEslintFixAll',
+            })
           end,
+        },
+        twiggy_language_server = {
+          root_markers = { '.git' },
           filetypes = { 'twig' },
         },
       }
@@ -734,9 +696,25 @@ require('lazy').setup({
       --  You can press `g?` for help in this menu.
       require('mason').setup()
 
+      -- Register each server's overrides on top of the defaults shipped by
+      -- nvim-lspconfig. mason-lspconfig then `vim.lsp.enable()`s every server
+      -- it has installed (`automatic_enable`), so there is no handler to write.
+      local mason_managed = {}
+      for server_name, server in pairs(servers) do
+        -- `mason = false` marks a server installed outside of Mason.
+        local use_mason = server.mason ~= false
+        server.mason = nil
+        vim.lsp.config(server_name, server)
+        if use_mason then
+          table.insert(mason_managed, server_name)
+        else
+          vim.lsp.enable(server_name)
+        end
+      end
+
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.tbl_keys(servers or {})
+      local ensure_installed = vim.deepcopy(mason_managed)
       vim.list_extend(ensure_installed, {
         'stylua',
         'selene',
@@ -749,17 +727,20 @@ require('lazy').setup({
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
       require('mason-lspconfig').setup {
-        handlers = {
-          function(server_name)
-            local server = servers[server_name] or {}
-            -- This handles overriding only values explicitly passed
-            -- by the server configuration above. Useful when disabling
-            -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-            require('lspconfig')[server_name].setup(server)
-          end,
-        },
+        -- Installs are driven by mason-tool-installer above.
+        ensure_installed = {},
+        -- Enable every server Mason has installed, except `stylua` -- it ships
+        -- an LSP mode, but formatting is handled by conform.nvim.
+        automatic_enable = { exclude = { 'stylua' } },
       }
+
+      -- Symfony Language Tools: `symfony-lsp` is installed standalone on PATH
+      -- and configured in `lsp/symfony_lsp.lua`. It runs *alongside* phpactor,
+      -- adding Symfony-aware routes/services/templates/translations support.
+      vim.lsp.config('symfony_lsp', {
+        capabilities = capabilities,
+      })
+      vim.lsp.enable 'symfony_lsp'
     end,
   },
 
@@ -785,6 +766,11 @@ require('lazy').setup({
           args = { '--stdin-filepath', '$FILENAME' },
           tempfile_postfix = '.tmp',
         },
+        php_cs_fixer = {
+          -- php-cs-fixer ignores dotfiles, so drop the leading `.` from the
+          -- temp file conform writes next to the buffer.
+          tmpfile_format = 'conform.$RANDOM.$FILENAME',
+        },
         -- Add other formatters as needed
       },
       format_after_save = function(bufnr)
@@ -807,11 +793,19 @@ require('lazy').setup({
         lua = { 'stylua' },
         twig = { 'prettier_twig' },
         json = { 'prettier' },
+        -- PHP: php-cs-fixer picks up the project's `.php-cs-fixer.php`
+        -- (it runs with cwd set to the nearest composer.json).
+        php = { 'php_cs_fixer' },
+        -- Go: goimports also applies gofmt, so gofmt is only a fallback.
+        go = { 'goimports', 'gofmt', stop_after_first = true },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
         --
         -- You can use 'stop_after_first' to run the first available formatter from the list
         javascript = { 'prettierd', 'prettier', stop_after_first = true },
+        javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        typescript = { 'prettierd', 'prettier', stop_after_first = true },
+        typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
       },
     },
   },
@@ -1054,6 +1048,8 @@ require('lazy').setup({
   --    For additional information, see `:help lazy.nvim-lazy.nvim-structuring-your-plugins`
   { import = 'custom.plugins' },
 }, {
+  -- No plugin in this config requires luarocks, so skip the hererocks bootstrap.
+  rocks = { enabled = false },
   ui = {
     -- If you are using a Nerd Font: set icons to an empty table which will use the
     -- default lazy.nvim defined Nerd Font icons, otherwise define a unicode icons table
@@ -1075,34 +1071,7 @@ require('lazy').setup({
   },
 })
 
--- Function to call php-cs-fixer
-function PhpCsFixerFixFile()
-  -- Get the current file path
-  local file = vim.fn.expand '%:p'
-
-  -- Define the php-cs-fixer command
-  local cmd = 'php-cs-fixer fix ' .. vim.fn.shellescape(file)
-
-  -- Run the command
-  vim.fn.system(cmd)
-
-  -- Check if the file was changed
-  if vim.v.shell_error == 0 then
-    -- Reload the buffer to reflect changes
-    vim.cmd 'edit'
-  else
-    -- Notify the user if there's an error
-    vim.notify('php-cs-fixer error: ' .. vim.fn.system(cmd), vim.log.levels.ERROR)
-  end
-end
-
--- Autocommand to format PHP files on save
-vim.api.nvim_create_autocmd('BufWritePost', {
-  pattern = '*.php',
-  callback = function()
-    PhpCsFixerFixFile()
-  end,
-})
+-- NOTE: PHP is formatted on save by conform.nvim (`php_cs_fixer`), see above.
 
 -- Define options for key mappings
 local opts = { noremap = true, silent = true }
