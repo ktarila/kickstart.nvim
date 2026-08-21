@@ -663,12 +663,6 @@ require('lazy').setup({
           },
         },
 
-        phpactor = {
-          -- handlers = {
-          -- Override the default handler for "textDocument/publishDiagnostics" to disable diagnostics
-          -- ['textDocument/publishDiagnostics'] = function() end,
-          -- },
-        },
         eslint = {
           -- Apply ESLint's auto-fixes on save (JS/TS linting), on top of the
           -- diagnostics the server publishes while editing.
@@ -686,6 +680,8 @@ require('lazy').setup({
           root_markers = { '.git' },
           filetypes = { 'twig' },
         },
+        -- PHP. Runs alongside symfony_lsp (see below).
+        phpantom_lsp = {},
       }
 
       -- Ensure the servers and tools above are installed
@@ -735,10 +731,22 @@ require('lazy').setup({
       }
 
       -- Symfony Language Tools: `symfony-lsp` is installed standalone on PATH
-      -- and configured in `lsp/symfony_lsp.lua`. It runs *alongside* phpactor,
+      -- and configured in `lsp/symfony_lsp.lua`. It runs *alongside* phpantom_lsp,
       -- adding Symfony-aware routes/services/templates/translations support.
+      --
+      -- Pinned to utf-16. Neovim offers { utf-8, utf-16, utf-32 } in that order,
+      -- and symfony-lsp is the only server here that accepts utf-8 -- so it took
+      -- it while phpantom_lsp, tailwindcss and twiggy all sat on utf-16, and
+      -- sharing a buffer with two encodings is what raises "multiple different
+      -- client offset_encodings detected". Agreeing with the others is cheaper
+      -- than being right on its own: the difference only shows up on lines with
+      -- characters outside the BMP.
       vim.lsp.config('symfony_lsp', {
-        capabilities = capabilities,
+        capabilities = vim.tbl_deep_extend('force', capabilities, {
+          general = {
+            positionEncodings = { 'utf-16' },
+          },
+        }),
       })
       vim.lsp.enable 'symfony_lsp'
     end,
