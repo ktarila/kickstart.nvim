@@ -342,7 +342,11 @@ require('lazy').setup({
   { -- Fuzzy Finder (files, lsp, etc)
     'nvim-telescope/telescope.nvim',
     event = 'VimEnter',
-    branch = '0.1.x',
+    -- `0.1.x` (last release: May 2024) still drives its previewer through the
+    -- `nvim-treesitter.configs`/`parsers` module system, which `main` deleted --
+    -- hence `ft_to_lang` being nil. `master` dropped the nvim-treesitter
+    -- dependency entirely and calls `vim.treesitter.start` directly.
+    branch = 'master',
     dependencies = {
       'nvim-lua/plenary.nvim',
       { -- If encountering errors, see telescope-fzf-native README for installation instructions
