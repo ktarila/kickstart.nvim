@@ -650,7 +650,17 @@ require('lazy').setup({
           },
         },
         gopls = {},
-        cssls = {},
+        cssls = {
+          -- The stock VS Code CSS server has no idea about Tailwind, so it
+          -- flags `@tailwind` and `@apply` as unknown at-rules in every
+          -- stylesheet. Only the linting is silenced; `validate` stays on, so
+          -- real CSS mistakes are still reported.
+          settings = {
+            css = { lint = { unknownAtRules = 'ignore' } },
+            scss = { lint = { unknownAtRules = 'ignore' } },
+            less = { lint = { unknownAtRules = 'ignore' } },
+          },
+        },
         tailwindcss = {
           root_markers = { '.git' },
         },
