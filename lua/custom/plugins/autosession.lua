@@ -12,8 +12,13 @@ return {
         suppressed_dirs = { '~/', '~/Projects', '~/Downloads', '/' },
       }
 
-      vim.keymap.set('n', '<leader>ls', require('auto-session.session-lens').search_session, {
+      -- The old `auto-session.session-lens` module is gone; the picker now lives
+      -- behind `auto-session.pickers`, which resolves telescope -> fzf -> snacks
+      -- -> `vim.ui.select` at invoke time. Going through the command rather than
+      -- a direct `require` keeps that resolution lazy.
+      vim.keymap.set('n', '<leader>ls', '<cmd>AutoSession search<CR>', {
         noremap = true,
+        desc = '[L]ist [S]essions',
       })
     end,
   },
