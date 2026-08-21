@@ -1004,22 +1004,97 @@ require('lazy').setup({
   },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
+    branch = 'main',
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs', -- Sets main module to use for opts
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = { 'hcl', 'terraform', 'php', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'vim', 'vimdoc', 'twig' },
-      -- Autoinstall languages that are not installed
-      auto_install = true,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
+    -- On `main` the module system is gone: no `nvim-treesitter.configs`, and no
+    -- `ensure_installed`/`highlight`/`indent` options to pass it. The plugin
+    -- now ships parsers and queries and nothing else -- highlighting, folding
+    -- and indentation all belong to Neovim, switched on per buffer below.
+    --
+    -- `master` is archived upstream and still assumes the pre-0.11 query
+    -- contract, where a capture handed a directive one node rather than a list
+    -- of them. Its markdown injection directive therefore threw on every
+    -- fenced code block, which is what an LSP hover window is made of.
+    config = function()
+      local ts = require 'nvim-treesitter'
+
+      -- markdown_inline is not optional: markdown injects into it, and that is
+      -- the pair every hover window and `:help` page is rendered with.
+      local ensure_installed = {
+        'hcl',
+        'terraform',
+        'php',
+        'bash',
+        'c',
+        'diff',
+        'html',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'vim',
+        'vimdoc',
+        'twig',
+      }
+      ts.install(ensure_installed)
+
+      -- Ruby wants vim's regex engine for its indent rules, so it keeps
+      -- `syntax` on next to the treesitter highlighter and sits out the
+      -- treesitter indentexpr.
+      local regex_syntax_too = { ruby = true }
+      local no_ts_indent = { ruby = true }
+
+      -- `get_installed()` re-scans two directories on every call, so keep the
+      -- answer and refresh it only when something new lands.
+      local installed = {}
+      local function refresh_installed()
+        installed = {}
+        for _, lang in ipairs(ts.get_installed()) do
+          installed[lang] = true
+        end
+      end
+      refresh_installed()
+
+      local available = {}
+      for _, lang in ipairs(ts.get_available()) do
+        available[lang] = true
+      end
+
+      local function enable(buf, ft, lang)
+        if not vim.api.nvim_buf_is_valid(buf) or not pcall(vim.treesitter.start, buf, lang) then
+          return
+        end
+        if regex_syntax_too[ft] then
+          vim.bo[buf].syntax = 'on'
+        end
+        if not no_ts_indent[ft] then
+          vim.bo[buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+        end
+      end
+
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('treesitter-start', { clear = true }),
+        callback = function(ev)
+          local ft = ev.match
+          local lang = vim.treesitter.language.get_lang(ft)
+          if not lang then
+            return
+          end
+          if installed[lang] then
+            enable(ev.buf, ft, lang)
+          elseif available[lang] then
+            -- Stands in for the old `auto_install`: fetch in the background,
+            -- then light the buffer up once the parser is there.
+            ts.install(lang):await(function()
+              vim.schedule(function()
+                refresh_installed()
+                enable(ev.buf, ft, lang)
+              end)
+            end)
+          end
+        end,
+      })
+    end,
     -- There are additional nvim-treesitter modules that you can use to interact
     -- with nvim-treesitter. You should go explore a few and see what interests you:
     --
