@@ -26,6 +26,12 @@ return {
   },
   init_options = {
     phpCommand = { 'php' },
+    -- Runtime indexing runs `bin/console` through the generated bridge, so the
+    -- server asks permission before it will do that. It keeps no record of the
+    -- answer -- there is no trust file under `var/symfony-lsp/` or anywhere in
+    -- $XDG_* -- so trust lives only in the server process and every restart
+    -- asks again. Declaring it here answers once, for every project.
+    workspaceTrust = true,
     containerProjectRoot = '',
     environment = 'dev',
     debug = true,
