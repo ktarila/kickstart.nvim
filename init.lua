@@ -1271,5 +1271,20 @@ vim.api.nvim_set_keymap(
   ':lua FindFilesWithVisualText()<CR>',
   { desc = 'Find files with selected text in name', noremap = true, silent = true }
 )
+
+-- Copy absolute file path to clipboard
+vim.keymap.set('n', '<leader>cy', function()
+  local path = vim.fn.expand '%:p'
+  vim.fn.setreg('+', path)
+  vim.notify('Copied absolute path: ' .. path)
+end, { desc = 'Copy absolute file path' })
+
+-- Copy relative file path to clipboard
+vim.keymap.set('n', '<leader>cx', function()
+  local path = vim.fn.expand '%'
+  vim.fn.setreg('+', path)
+  vim.notify('Copied relative path: ' .. path)
+end, { desc = 'Copy relative file path' })
+
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
