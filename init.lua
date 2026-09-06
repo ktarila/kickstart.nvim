@@ -174,6 +174,55 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
+-- `K` for diagnostics: peek at the errors on the current line in a float rather
+-- than sending them to a split. Neovim already binds `<C-W>d` to a bare
+-- `open_float()`; this adds the wrapper `q`/`<Esc>` dismissal that the hover
+-- window has and the diagnostic float does not.
+vim.keymap.set('n', '<leader>e', function()
+  local float_buf, float_win = vim.diagnostic.open_float {
+    scope = 'line',
+    border = 'rounded',
+    source = true,
+    header = '',
+    -- Number the entries only when the line carries more than one.
+    prefix = function(_, i, total)
+      return total > 1 and string.format('%d. ', i) or '', 'NormalFloat'
+    end,
+  }
+  -- Returns nil when the line is clean; say so rather than doing nothing.
+  if not float_win then
+    vim.notify('No diagnostics on this line', vim.log.levels.INFO)
+    return
+  end
+
+  local source_buf = vim.api.nvim_get_current_buf()
+  local function close()
+    if vim.api.nvim_win_is_valid(float_win) then
+      vim.api.nvim_win_close(float_win, true)
+    end
+  end
+
+  -- The float opens unfocused, exactly like `K`: it dismisses itself as soon as
+  -- the cursor moves, and pressing the key again steps into it (`open_float`
+  -- sets a `focus_id`). These two are for once you are inside.
+  for _, key in ipairs { 'q', '<Esc>' } do
+    vim.keymap.set('n', key, close, { buffer = float_buf, nowait = true, silent = true, desc = 'Close diagnostic float' })
+  end
+
+  -- ...and this closes it from the buffer underneath, so `<Esc>` works without
+  -- entering the float first. Scoped to the buffer and torn down with the
+  -- window, so the global `<Esc>` -> `nohlsearch` mapping above is only shadowed
+  -- while the float is actually on screen.
+  vim.keymap.set('n', '<Esc>', close, { buffer = source_buf, nowait = true, silent = true, desc = 'Close diagnostic float' })
+  vim.api.nvim_create_autocmd('WinClosed', {
+    pattern = tostring(float_win),
+    once = true,
+    callback = function()
+      pcall(vim.keymap.del, 'n', '<Esc>', { buffer = source_buf })
+    end,
+  })
+end, { desc = 'Show diagnostic [E]rror in a floating window' })
+
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
 -- is not what someone will guess without a bit more experience.
@@ -211,6 +260,45 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   end,
 })
 
+-- Show the quickfix list in a floating window instead of a bottom split.
+--  Affects every `:copen` (LSP references, :grep, diagnostics, ...).
+--  Location lists are left alone -- they belong to a specific window.
+vim.api.nvim_create_autocmd('FileType', {
+  desc = 'Open the quickfix list as a floating window',
+  group = vim.api.nvim_create_augroup('quickfix-float', { clear = true }),
+  pattern = 'qf',
+  callback = function(ev)
+    local win = vim.fn.win_getid()
+    if vim.fn.getwininfo(win)[1].loclist == 1 then
+      return
+    end
+
+    vim.api.nvim_win_set_config(win, {
+      relative = 'editor',
+      width = math.floor(vim.o.columns * 0.8),
+      height = math.floor(vim.o.lines * 0.5),
+      col = math.floor(vim.o.columns * 0.1),
+      row = math.floor(vim.o.lines * 0.2),
+      border = 'rounded',
+      title = ' quickfix ',
+      title_pos = 'center',
+    })
+    vim.wo[win].number = false
+    vim.wo[win].relativenumber = false
+    vim.wo[win].signcolumn = 'no'
+
+    -- Jumping out of a float would otherwise land in the float itself,
+    -- so close it first and then jump to the entry under the cursor.
+    vim.keymap.set('n', '<CR>', function()
+      local idx = vim.fn.line '.'
+      vim.cmd.cclose()
+      vim.cmd.cc { count = idx }
+    end, { buffer = ev.buf, desc = 'Jump to quickfix entry' })
+
+    vim.keymap.set('n', 'q', vim.cmd.cclose, { buffer = ev.buf, desc = 'Close quickfix' })
+  end,
+})
+
 -- [[ Install `lazy.nvim` plugin manager ]]
 --    See `:help lazy.nvim.txt` or https://github.com/folke/lazy.nvim for more info
 local lazypath = vim.fn.stdpath 'data' .. '/lazy/lazy.nvim'
@@ -234,6 +322,11 @@ vim.opt.rtp:prepend(lazypath)
 --    :Lazy update
 --
 -- NOTE: Here is where you install your plugins.
+-- Colorscheme: Mariana, ported from Sublime Text (see `colors/mariana.lua`).
+-- Set before `lazy.setup()` so plugins that derive their highlights at setup
+-- time (bufferline, mini.statusline) pick up these colors.
+vim.cmd.colorscheme 'mariana'
+
 require('lazy').setup({
   -- NOTE: Plugins can be added with a link (or for a github repo: 'owner/repo' link).
   'tpope/vim-sleuth', -- Detect tabstop and shiftwidth automatically
@@ -531,6 +624,12 @@ require('lazy').setup({
           -- Find references for the word under your cursor.
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
 
+          -- Neovim 0.11+ ships its own `gr*` LSP mappings that dump results into
+          -- the quickfix list. Point them at Telescope so they float like `gr`.
+          map('grr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
+          map('gri', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
+          map('grt', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
+
           -- Jump to the implementation of the word under your cursor.
           --  Useful when your language has ways of declaring types without an actual implementation.
           map('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
@@ -558,7 +657,17 @@ require('lazy').setup({
 
           -- WARN: This is not Goto Definition, this is Goto Declaration.
           --  For example, in C this would take you to the header.
-          map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+          --  gopls (and plenty of others) never implement it, so rather than
+          --  erroring out this falls through to the ctags index, which is what
+          --  gets you from a Go query string to the Postgres function it calls.
+          map('gD', function()
+            local client = vim.lsp.get_clients({ bufnr = event.buf })[1]
+            if client and client:supports_method 'textDocument/declaration' then
+              vim.lsp.buf.declaration()
+            else
+              GotoTag()
+            end
+          end, '[G]oto [D]eclaration')
 
           -- The following two autocommands are used to highlight references of the
           -- word under your cursor when your cursor rests there for a little while.
@@ -673,6 +782,28 @@ require('lazy').setup({
           settings = {
             yaml = {
               keyOrdering = false,
+            },
+          },
+        },
+        -- A chart's `templates/*.yaml` is Go template text, not YAML, so
+        -- yamlls reports every `{{ ... }}` line as a parse error ("Unexpected
+        -- scalar token in YAML stream") and nothing after it can be trusted.
+        -- vim-helm gives those buffers `ft=helm`, which yamlls does not claim
+        -- and helm_ls does: it renders the chart before it lints, resolves
+        -- `.Values` references against values.yaml (hover, go-to-definition,
+        -- completion), and runs its own yaml-language-server over the
+        -- *rendered* output -- so real YAML mistakes still surface, without
+        -- the template noise. `helm lint` diagnostics need the `helm` binary
+        -- on $PATH.
+        helm_ls = {
+          settings = {
+            ['helm-ls'] = {
+              yamlls = {
+                enabled = true,
+                -- Mason's bin dir is not on $PATH outside of Neovim, so hand
+                -- helm_ls the absolute path rather than hoping it resolves.
+                path = vim.fn.stdpath 'data' .. '/mason/bin/yaml-language-server',
+              },
             },
           },
         },
@@ -948,22 +1079,11 @@ require('lazy').setup({
     end,
   },
 
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  { -- Kept installed as an alternative; the active colorscheme is `mariana`,
+    -- a local port of Sublime Text's Mariana that lives in `colors/mariana.lua`
+    -- and is loaded before `lazy.setup()` below.
     'catppuccin/nvim',
-    priority = 1000, -- Make sure to load this before all the other start plugins.
-    init = function()
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as catppuccin-latte, catppuccin-frappe, catppuccin-macchiato, or catppuccin-mocha.
-      vim.cmd.colorscheme 'catppuccin-mocha'
-
-      -- You can configure highlights by doing something like:
-      vim.cmd.hi 'Comment gui=none'
-    end,
+    lazy = true,
   },
 
   -- Highlight todo, notes, etc in comments
@@ -1006,6 +1126,39 @@ require('lazy').setup({
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
   },
+  { -- Filetype detection for Helm charts: `ft=helm` for `templates/*.yaml`,
+    -- `*.tpl` and NOTES.txt, `ft=yaml.helm-values` for a chart's values files.
+    -- Everything else keys off those two names -- helm_ls claims both, yamlls
+    -- claims neither, and the treesitter autocmd below resolves `helm` to the
+    -- helm parser and `yaml.helm-values` to the yaml one.
+    --
+    -- Cannot be lazy-loaded on `ft`: it is what sets the filetype in the first
+    -- place, so waiting for the filetype would be circular.
+    'towolf/vim-helm',
+    lazy = false,
+    config = function()
+      -- vim-helm's own `values*.yaml` rule uses `setfiletype`, which is a
+      -- no-op once Neovim's built-in detection has already claimed the buffer
+      -- as `yaml` -- so values files never reached helm_ls. Claim them here
+      -- instead, ahead of the extension rule (`priority > 0`), and only when
+      -- there is a Chart.yaml alongside: `values.yaml` is a common enough name
+      -- outside charts. `yaml.helm-values` still resolves to the yaml parser
+      -- for highlighting (treesitter reads the part before the dot), but it is
+      -- what helm_ls watches to cross-reference `.Values` against templates.
+      vim.filetype.add {
+        pattern = {
+          ['.*/values.*%.ya?ml'] = {
+            function(path)
+              if vim.uv.fs_stat(vim.fs.dirname(path) .. '/Chart.yaml') then
+                return 'yaml.helm-values'
+              end
+            end,
+            { priority = 10 },
+          },
+        },
+      }
+    end,
+  },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     branch = 'main',
@@ -1039,6 +1192,12 @@ require('lazy').setup({
         'vim',
         'vimdoc',
         'twig',
+        'yaml',
+        -- `helm` is the go-template grammar with the chart dialect on top; it
+        -- injects yaml into the literal text and gotmpl into the actions, so
+        -- `{{ ... }}` reads as template and the rest reads as YAML.
+        'helm',
+        'gotmpl',
       }
       ts.install(ensure_installed)
 
@@ -1046,7 +1205,10 @@ require('lazy').setup({
       -- `syntax` on next to the treesitter highlighter and sits out the
       -- treesitter indentexpr.
       local regex_syntax_too = { ruby = true }
-      local no_ts_indent = { ruby = true }
+      -- The helm grammar ships highlights/injections/folds but no indents.scm,
+      -- so its indentexpr has nothing to say -- leave those buffers on vim's
+      -- own YAML-ish autoindent.
+      local no_ts_indent = { ruby = true, helm = true }
 
       -- `get_installed()` re-scans two directories on every call, so keep the
       -- answer and refresh it only when something new lands.
@@ -1285,6 +1447,21 @@ vim.keymap.set('n', '<leader>cx', function()
   vim.fn.setreg('+', path)
   vim.notify('Copied relative path: ' .. path)
 end, { desc = 'Copy relative file path' })
+
+-- Goto the Postgres function under the cursor, from the Go string that calls it.
+-- gopls stops at the string literal, so this falls back to the ctags index that
+-- `make tags` builds over the migrations, then to a grep if there is no tag.
+function GotoTag()
+  local word = vim.fn.expand '<cword>'
+  if word == '' then
+    return
+  end
+  if not pcall(vim.cmd, 'tjump ' .. word) then
+    require('telescope.builtin').grep_string { search = word }
+  end
+end
+
+vim.keymap.set('n', '<leader>gs', GotoTag, { desc = '[G]oto [S]QL definition (tags)' })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et

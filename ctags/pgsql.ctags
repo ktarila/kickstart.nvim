@@ -1,0 +1,7 @@
+--langdef=pgsql
+--langmap=pgsql:.sql
+--regex-pgsql=/^CREATE[ \t]+(OR[ \t]+REPLACE[ \t]+)?(FUNCTION|PROCEDURE)[ \t]+([a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)/\4/f,function/i
+--regex-pgsql=/^CREATE[ \t]+(OR[ \t]+REPLACE[ \t]+)?(MATERIALIZED[ \t]+)?VIEW[ \t]+([a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)/\5/v,view/i
+--regex-pgsql=/^CREATE[ \t]+TABLE[ \t]+(IF[ \t]+NOT[ \t]+EXISTS[ \t]+)?([a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)/\3/t,table/i
+--regex-pgsql=/^CREATE[ \t]+TYPE[ \t]+([a-zA-Z0-9_]+\.)?([a-zA-Z0-9_]+)/\2/e,type/i
+--regex-pgsql=/^CREATE[ \t]+TRIGGER[ \t]+([a-zA-Z0-9_]+)/\1/r,trigger/i
