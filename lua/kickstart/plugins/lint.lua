@@ -10,83 +10,53 @@ return {
         php = { 'phpcs' },
       }
 
-      local function safe_notify(msg, level)
-        vim.schedule(function()
-          vim.notify(msg, level or vim.log.levels.INFO)
-        end)
+      -- Project root for a buffer. `.git` is checked before `composer.json`
+      -- so a file opened from `vendor/` still resolves to the real project
+      -- rather than the package's own `composer.json`.
+      local function project_root(bufnr)
+        return vim.fs.root(bufnr, { '.git' }) or vim.fs.root(bufnr, { 'composer.json' }) or vim.fn.getcwd()
       end
 
-      -- Define a function to find the phpcs.xml in the working directory
-      local function find_phpcs_config()
-        local working_dir = vim.fn.getcwd()
-        local phpcs_file = vim.fn.findfile('phpcs.xml', working_dir .. ';')
+      -- nvim-lint's bundled `phpcs` and `phpstan` definitions resolve
+      -- `vendor/bin/<tool>` relative to the process cwd, and both tools walk up
+      -- from cwd to find their ruleset (`phpcs.xml`, `phpstan.neon`). Running
+      -- every lint with cwd set to the project root therefore gives the same
+      -- binary and the same config as the git hooks, with no path juggling here.
+      local function lint_opts(bufnr)
+        return { cwd = project_root(bufnr) }
+      end
 
-        if phpcs_file == '' then
-          -- safe_notify('phpcs.xml not found in working directory: ' .. working_dir .. '. Using PSR12 coding standard.', vim.log.levels.WARN)
-          return nil -- Return nil if not found
-        else
-          -- vim.notify('Using phpcs.xml located at: ' .. phpcs_file .. ' (working directory: ' .. working_dir .. ')', vim.log.levels.INFO)
-          return phpcs_file
+      -- phpcs 3 defaults to the PEAR standard when no ruleset is found, which
+      -- is noisy on a project that has none; fall back to PSR12 instead.
+      local phpcs_rulesets = { '.phpcs.xml', 'phpcs.xml', '.phpcs.xml.dist', 'phpcs.xml.dist' }
+      local phpcs = lint.linters.phpcs
+      lint.linters.phpcs = function()
+        local args = vim.deepcopy(phpcs.args)
+        if not vim.fs.root(0, phpcs_rulesets) then
+          table.insert(args, 1, '--standard=PSR12')
         end
+        return vim.tbl_extend('force', phpcs, { args = args })
       end
 
-      -- Customize phpcs arguments to use the local standard file or PSR12
-      local phpcs_config = find_phpcs_config()
-      if phpcs_config then
-        require('lint').linters.phpcs.args = {
-          '--standard=' .. phpcs_config,
-          '--report=json',
-          '-q',
-          '-',
-        }
-      else
-        require('lint').linters.phpcs.args = {
-          '--standard=PSR12', -- Use PSR12 as the fallback standard
-          '--report=json',
-          '-q',
-          '-',
-        }
-      end
-
-      -- To allow other plugins to add linters to require('lint').linters_by_ft,
-      -- instead set linters_by_ft like this:
-      -- lint.linters_by_ft = lint.linters_by_ft or {}
-      -- lint.linters_by_ft['markdown'] = { 'markdownlint' }
-      --
-      -- However, note that this will enable a set of default linters,
-      -- which will cause errors unless these tools are available:
-      -- {
-      --   clojure = { "clj-kondo" },
-      --   dockerfile = { "hadolint" },
-      --   inko = { "inko" },
-      --   janet = { "janet" },
-      --   json = { "jsonlint" },
-      --   markdown = { "vale" },
-      --   rst = { "vale" },
-      --   ruby = { "ruby" },
-      --   terraform = { "tflint" },
-      --   text = { "vale" }
-      -- }
-      --
-      -- You can disable the default linters by setting their filetypes to nil:
-      -- lint.linters_by_ft['clojure'] = nil
-      -- lint.linters_by_ft['dockerfile'] = nil
-      -- lint.linters_by_ft['inko'] = nil
-      -- lint.linters_by_ft['janet'] = nil
-      -- lint.linters_by_ft['json'] = nil
-      -- lint.linters_by_ft['markdown'] = nil
-      -- lint.linters_by_ft['rst'] = nil
-      -- lint.linters_by_ft['ruby'] = nil
-      -- lint.linters_by_ft['terraform'] = nil
-      -- lint.linters_by_ft['text'] = nil
-
-      -- Create autocommand which carries out the actual linting
-      -- on the specified events.
       local lint_augroup = vim.api.nvim_create_augroup('lint', { clear = true })
       vim.api.nvim_create_autocmd({ 'BufEnter', 'BufWritePost', 'InsertLeave' }, {
         group = lint_augroup,
-        callback = function()
-          lint.try_lint()
+        callback = function(ev)
+          lint.try_lint(nil, lint_opts(ev.buf))
+        end,
+      })
+
+      -- PHPStan reads the file from disk and takes a second or two even with
+      -- its result cache, so it only runs on write, and only in projects that
+      -- ship it.
+      vim.api.nvim_create_autocmd('BufWritePost', {
+        group = lint_augroup,
+        pattern = '*.php',
+        callback = function(ev)
+          local root = project_root(ev.buf)
+          if vim.uv.fs_stat(root .. '/vendor/bin/phpstan') then
+            lint.try_lint('phpstan', { cwd = root })
+          end
         end,
       })
     end,

@@ -621,23 +621,13 @@ require('lazy').setup({
           --  To jump back, press <C-t>.
           map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
 
-          -- Find references for the word under your cursor.
-          map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
-
-          -- Neovim 0.11+ ships its own `gr*` LSP mappings that dump results into
-          -- the quickfix list. Point them at Telescope so they float like `gr`.
+          -- Neovim 0.11+ ships `grr`/`gri`/`grt`/`grn`/`gra` LSP mappings that dump
+          -- results into the quickfix list. Point the navigation ones at Telescope
+          -- so they float like `gd`. (No plain `gr` map: it would make every
+          -- `gr*` press wait out `timeoutlen` to disambiguate.)
           map('grr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
           map('gri', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
-          map('grt', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
-
-          -- Jump to the implementation of the word under your cursor.
-          --  Useful when your language has ways of declaring types without an actual implementation.
-          map('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
-
-          -- Jump to the type of the word under your cursor.
-          --  Useful when you're not sure what type a variable is and you want to see
-          --  the definition of its *type*, not where it was *defined*.
-          map('<leader>D', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
+          map('grt', require('telescope.builtin').lsp_type_definitions, '[G]oto [T]ype definition')
 
           -- Fuzzy find all the symbols in your current document.
           --  Symbols are things like variables, functions, types, etc.
@@ -739,11 +729,6 @@ require('lazy').setup({
         --
         -- But for many setups, the LSP (`ts_ls`) will work just fine
         ts_ls = {},
-        --
-        ruby_lsp = {
-          mason = false,
-          cmd = { vim.fn.expand '~/.asdf/shims/ruby-lsp' },
-        },
         terraformls = {
           root_markers = { '.terraform', '.git' },
         },
@@ -840,22 +825,14 @@ require('lazy').setup({
       -- Register each server's overrides on top of the defaults shipped by
       -- nvim-lspconfig. mason-lspconfig then `vim.lsp.enable()`s every server
       -- it has installed (`automatic_enable`), so there is no handler to write.
-      local mason_managed = {}
+      local ensure_installed = {}
       for server_name, server in pairs(servers) do
-        -- `mason = false` marks a server installed outside of Mason.
-        local use_mason = server.mason ~= false
-        server.mason = nil
         vim.lsp.config(server_name, server)
-        if use_mason then
-          table.insert(mason_managed, server_name)
-        else
-          vim.lsp.enable(server_name)
-        end
+        table.insert(ensure_installed, server_name)
       end
 
       -- You can add other tools here that you want Mason to install
       -- for you, so that they are available from within Neovim.
-      local ensure_installed = vim.deepcopy(mason_managed)
       vim.list_extend(ensure_installed, {
         'stylua',
         'selene',
@@ -1286,7 +1263,8 @@ require('lazy').setup({
   require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
   {
     'akinsho/bufferline.nvim',
-
+    -- Loaded eagerly (not only via `keys`) so the tabline is drawn from the start.
+    event = 'VeryLazy',
     keys = {
       { '<Tab>', '<Cmd>BufferLineCycleNext<CR>', desc = 'Next tab' },
       { '<S-Tab>', '<Cmd>BufferLineCyclePrev<CR>', desc = 'Prev tab' },
@@ -1335,10 +1313,8 @@ require('lazy').setup({
 -- Define options for key mappings
 local opts = { noremap = true, silent = true }
 
--- New tab
+-- New tab (<Tab>/<S-Tab> cycle tabs via bufferline, see its `keys` above)
 vim.api.nvim_set_keymap('n', 'te', ':tabedit<CR>', opts)
-vim.api.nvim_set_keymap('n', '<tab>', ':tabnext<CR>', opts)
-vim.api.nvim_set_keymap('n', '<s-tab>', ':tabprev<CR>', opts)
 
 -- Split window
 vim.api.nvim_set_keymap('n', 'ss', ':split<CR>', opts)
