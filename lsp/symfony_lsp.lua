@@ -5,8 +5,7 @@
 --- Symfony-aware completion, navigation, references, diagnostics, code actions,
 --- rename support and code lenses alongside a general PHP language server.
 ---
---- Install the `symfony-lsp` executable from a release, then make it
---- available on `PATH`.
+--- Installed by Mason (`symfony-lsp`) and enabled by mason-lspconfig.
 ---
 --- The server asks before executing application code for runtime indexing. Set
 --- `init_options.workspaceTrust` explicitly only for trusted workspaces.

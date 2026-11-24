@@ -347,12 +347,24 @@ require('lazy').setup({
     'lewis6991/gitsigns.nvim',
     opts = {
       signs = {
-        add = { text = '+' },
-        change = { text = '~' },
-        delete = { text = '_' },
-        topdelete = { text = '‾' },
-        changedelete = { text = '~' },
+        add = { text = '▎' },
+        change = { text = '▎' },
+        delete = { text = '' },
+        topdelete = { text = '' },
+        changedelete = { text = '▎' },
+        untracked = { text = '▎' },
       },
+      signs_staged = {
+        add = { text = '▎' },
+        change = { text = '▎' },
+        delete = { text = '' },
+        topdelete = { text = '' },
+        changedelete = { text = '▎' },
+      },
+      numhl = true, -- colour the line number green/yellow/red
+      linehl = false, -- toggle with <leader>tl
+      word_diff = false, -- toggle with <leader>tw
+      preview_config = { border = 'rounded' },
     },
   },
 
@@ -810,8 +822,26 @@ require('lazy').setup({
           root_markers = { '.git' },
           filetypes = { 'twig' },
         },
-        -- PHP. Runs alongside symfony_lsp (see below).
+        -- PHP. Runs alongside symfony_lsp.
         phpantom_lsp = {},
+        -- Symfony Language Tools (Mason: `symfony-lsp`), configured in
+        -- `lsp/symfony_lsp.lua`. Runs *alongside* phpantom_lsp, adding
+        -- Symfony-aware routes/services/templates/translations support.
+        --
+        -- Pinned to utf-16. Neovim offers { utf-8, utf-16, utf-32 } in that order,
+        -- and symfony-lsp is the only server here that accepts utf-8 -- so it took
+        -- it while phpantom_lsp, tailwindcss and twiggy all sat on utf-16, and
+        -- sharing a buffer with two encodings is what raises "multiple different
+        -- client offset_encodings detected". Agreeing with the others is cheaper
+        -- than being right on its own: the difference only shows up on lines with
+        -- characters outside the BMP.
+        symfony_lsp = {
+          capabilities = vim.tbl_deep_extend('force', capabilities, {
+            general = {
+              positionEncodings = { 'utf-16' },
+            },
+          }),
+        },
       }
 
       -- Ensure the servers and tools above are installed
@@ -851,26 +881,6 @@ require('lazy').setup({
         -- an LSP mode, but formatting is handled by conform.nvim.
         automatic_enable = { exclude = { 'stylua' } },
       }
-
-      -- Symfony Language Tools: `symfony-lsp` is installed standalone on PATH
-      -- and configured in `lsp/symfony_lsp.lua`. It runs *alongside* phpantom_lsp,
-      -- adding Symfony-aware routes/services/templates/translations support.
-      --
-      -- Pinned to utf-16. Neovim offers { utf-8, utf-16, utf-32 } in that order,
-      -- and symfony-lsp is the only server here that accepts utf-8 -- so it took
-      -- it while phpantom_lsp, tailwindcss and twiggy all sat on utf-16, and
-      -- sharing a buffer with two encodings is what raises "multiple different
-      -- client offset_encodings detected". Agreeing with the others is cheaper
-      -- than being right on its own: the difference only shows up on lines with
-      -- characters outside the BMP.
-      vim.lsp.config('symfony_lsp', {
-        capabilities = vim.tbl_deep_extend('force', capabilities, {
-          general = {
-            positionEncodings = { 'utf-16' },
-          },
-        }),
-      })
-      vim.lsp.enable 'symfony_lsp'
     end,
   },
 
@@ -891,11 +901,6 @@ require('lazy').setup({
     opts = {
       notify_on_error = false,
       formatters = {
-        prettier_twig = {
-          command = 'prettier',
-          args = { '--stdin-filepath', '$FILENAME' },
-          tempfile_postfix = '.tmp',
-        },
         php_cs_fixer = {
           -- php-cs-fixer ignores dotfiles, so drop the leading `.` from the
           -- temp file conform writes next to the buffer.
@@ -921,7 +926,9 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
-        twig = { 'prettier_twig' },
+        -- Twig: the project's `vendor/bin/twig-cs-fixer` (composer dev dep);
+        -- twiggy's LSP formatting runs the same binary as a fallback.
+        twig = { 'twig-cs-fixer' },
         json = { 'prettier' },
         -- PHP: php-cs-fixer picks up the project's `.php-cs-fixer.php`
         -- (it runs with cwd set to the nearest composer.json).
@@ -1184,8 +1191,9 @@ require('lazy').setup({
       local regex_syntax_too = { ruby = true }
       -- The helm grammar ships highlights/injections/folds but no indents.scm,
       -- so its indentexpr has nothing to say -- leave those buffers on vim's
-      -- own YAML-ish autoindent.
-      local no_ts_indent = { ruby = true, helm = true }
+      -- own YAML-ish autoindent. Twig gets its own indentexpr from
+      -- `after/indent/twig.lua` (treesitter HTML indent + twig block depth).
+      local no_ts_indent = { ruby = true, helm = true, twig = true }
 
       -- `get_installed()` re-scans two directories on every call, so keep the
       -- answer and refresh it only when something new lands.
